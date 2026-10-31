@@ -1,0 +1,433 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="Pick any word, of any length, and send your friends a link to crack it.">
+<title>Inkling</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Figtree:wght@400;500;600&display=swap">
+<style>
+/* Layout: one narrow column — masthead, then either the maker card or the board + keyboard. */
+:root {
+  --bg: #e9ebf3;
+  --surface: #f8f9fd;
+  --fg: #1c1b2e;
+  --muted: #646380;
+  --line: #c9cbdc;
+  --hit: #ef6a2c;      /* right letter, right spot */
+  --near: #5f6ff0;     /* in the word, wrong spot */
+  --miss: #8d8ba3;     /* not in the word */
+  --tile-ink: #ffffff;
+  --key: #d5d8e6;
+  --danger: #c4314b;
+  --display: "Bricolage Grotesque", "Trebuchet MS", system-ui, sans-serif;
+  --body: "Figtree", "Segoe UI", system-ui, sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #14131f; --surface: #1d1c2c; --fg: #ecebf7; --muted: #9c9ab8; --line: #36354c;
+    --hit: #f27a3e; --near: #7482ff; --miss: #46455c; --tile-ink: #ffffff; --key: #2d2c42; --danger: #ff6b84;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #14131f; --surface: #1d1c2c; --fg: #ecebf7; --muted: #9c9ab8; --line: #36354c;
+  --hit: #f27a3e; --near: #7482ff; --miss: #46455c; --tile-ink: #ffffff; --key: #2d2c42; --danger: #ff6b84;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+:root { padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
+body { margin: 0; }
+html, body { min-height: 100%; }
+body {
+  background: var(--bg); color: var(--fg); font-family: var(--body); font-size: 16px; line-height: 1.5;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 0 32px;
+}
+.wrap { max-width: 640px; margin: 0 auto; display: flex; flex-direction: column; gap: 20px; }
+header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-block: 18px 6px; border-bottom: 1px solid var(--line); }
+.logo { font-family: var(--display); font-weight: 800; font-size: 28px; letter-spacing: -0.02em; display: flex; align-items: center; gap: 8px; background: none; border: 0; color: var(--fg); cursor: pointer; padding: 0; }
+.logo i { display: inline-grid; place-items: center; width: 30px; height: 30px; border-radius: 7px; background: var(--hit); color: var(--tile-ink); font-style: normal; font-size: 19px; }
+.logo i + i { background: var(--near); margin-left: -4px; }
+button { font: inherit; }
+.btn { font-family: var(--body); font-weight: 600; font-size: 15px; border-radius: 10px; padding: 11px 18px; border: 1.5px solid var(--fg); background: var(--fg); color: var(--bg); cursor: pointer; }
+.btn.ghost { background: transparent; color: var(--fg); border-color: var(--line); }
+.btn:focus-visible, .key:focus-visible, input:focus-visible, textarea:focus-visible, .logo:focus-visible { outline: 3px solid var(--near); outline-offset: 2px; }
+h1 { font-family: var(--display); font-weight: 800; font-size: clamp(30px, 7vw, 44px); line-height: 1.05; letter-spacing: -0.025em; margin: 6px 0 0; text-wrap: balance; }
+.lede { color: var(--muted); margin: 0; max-width: 52ch; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 20px; display: flex; flex-direction: column; gap: 16px; }
+label { font-size: 12px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); display: flex; flex-direction: column; gap: 6px; }
+label small { text-transform: none; letter-spacing: 0; font-weight: 400; }
+input, textarea { font: inherit; font-size: 16px; color: var(--fg); background: var(--bg); border: 1.5px solid var(--line); border-radius: 10px; padding: 11px 12px; width: 100%; text-transform: none; letter-spacing: 0; }
+#word { font-family: var(--display); font-weight: 700; font-size: 22px; letter-spacing: 0.06em; text-transform: uppercase; }
+.row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+@media (max-width: 460px) { .row2 { grid-template-columns: 1fr; } }
+.note { font-size: 14px; color: var(--muted); margin: 0; }
+.err { color: var(--danger); font-size: 14px; margin: 0; min-height: 1.2em; }
+.actions { display: flex; flex-wrap: wrap; gap: 10px; }
+
+/* Board */
+.board-wrap { container-type: inline-size; width: min(100%, calc(var(--n) * 64px)); margin: 0 auto; }
+.board { display: grid; gap: 6px; }
+.brow { display: grid; grid-template-columns: repeat(var(--n), minmax(0, 1fr)); gap: clamp(2px, calc(30cqi / var(--n) / 5), 6px); }
+.tile {
+  aspect-ratio: 1; max-width: 100%; display: grid; place-items: center; border: 2px solid var(--line); border-radius: 8px;
+  font-family: var(--display); font-weight: 700; font-size: min(32px, calc(100cqi / var(--n) * 0.52)); text-transform: uppercase; line-height: 1;
+  background: var(--surface); color: var(--fg); user-select: none;
+}
+.tile.typed { border-color: var(--muted); animation: pop .1s ease-out; }
+.tile.hit, .tile.near, .tile.miss { color: var(--tile-ink); border-color: transparent; }
+.tile.hit { background: var(--hit); }
+.tile.near { background: var(--near); }
+.tile.miss { background: var(--miss); }
+.tile.flip { animation: flip .45s ease both; }
+.brow.shake { animation: shake .35s ease; }
+@keyframes pop { from { transform: scale(.9); } to { transform: scale(1); } }
+@keyframes flip { 0% { transform: rotateX(0); } 50% { transform: rotateX(90deg); } 100% { transform: rotateX(0); } }
+@keyframes shake { 20%,60% { transform: translateX(-6px); } 40%,80% { transform: translateX(6px); } }
+@media (prefers-reduced-motion: reduce) { .tile, .brow { animation: none !important; } }
+
+.meta { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: baseline; justify-content: space-between; }
+.meta b { font-family: var(--display); font-size: 20px; }
+.chip { font-size: 13px; font-weight: 600; padding: 3px 10px; border-radius: 99px; background: var(--key); color: var(--fg); font-variant-numeric: tabular-nums; }
+.hint { border-left: 3px solid var(--near); padding: 4px 0 4px 12px; margin: 0; color: var(--fg); }
+.toast { position: fixed; left: 50%; top: calc(16px + env(safe-area-inset-top, 0px)); transform: translateX(-50%); background: var(--fg); color: var(--bg); padding: 9px 16px; border-radius: 10px; font-weight: 600; font-size: 14px; z-index: 20; pointer-events: none; }
+
+/* Keyboard */
+.kbd { display: flex; flex-direction: column; gap: 7px; user-select: none; }
+.krow { display: flex; gap: 5px; justify-content: center; }
+.key { flex: 1 1 0; min-width: 0; max-width: 46px; height: 54px; border: 0; border-radius: 7px; background: var(--key); color: var(--fg); font-weight: 600; font-size: 16px; cursor: pointer; text-transform: uppercase; padding: 0; }
+.key.wide { max-width: 72px; flex-grow: 1.6; font-size: 13px; }
+.key.hit { background: var(--hit); color: var(--tile-ink); }
+.key.near { background: var(--near); color: var(--tile-ink); }
+.key.miss { background: var(--miss); color: var(--tile-ink); opacity: .75; }
+
+.legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 13px; color: var(--muted); }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.legend i { width: 14px; height: 14px; border-radius: 4px; display: inline-block; }
+.result h2 { font-family: var(--display); font-size: 28px; margin: 0; letter-spacing: -0.02em; }
+.answer { font-family: var(--display); font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: var(--hit); }
+pre.share { font-family: var(--body); background: var(--bg); border-radius: 10px; padding: 12px; margin: 0; white-space: pre-wrap; word-break: break-all; font-size: 14px; line-height: 1.25; }
+.linkbox { font-size: 14px; }
+.sample { --n: 7; }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header>
+    <button class="logo" id="home" type="button" aria-label="Inkling home"><span aria-hidden="true" style="display:flex"><i>I</i><i>K</i></span>Inkling</button>
+    <button class="btn ghost" id="newBtn" type="button" hidden>Make your own</button>
+  </header>
+
+  <!-- MAKER -->
+  <section id="make" class="wrap" style="gap:20px">
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <h1>Pick any word. Your friends get to crack it.</h1>
+      <p class="lede">Real words, made-up words, inside jokes, a name, a ridiculous long one. Any length. You set the word and the number of guesses, then send the link.</p>
+    </div>
+
+    <div class="board-wrap sample" aria-hidden="true">
+      <div class="brow"><div class="tile miss">B</div><div class="tile hit">L</div><div class="tile miss">A</div><div class="tile near">R</div><div class="tile miss">G</div><div class="tile hit">L</div><div class="tile near">E</div></div>
+    </div>
+
+    <form class="card" id="makeForm" novalidate>
+      <label for="word">Secret word <small id="wordCount">letters only, up to 30</small>
+        <input id="word" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="40" placeholder="SCHNORBLE">
+      </label>
+      <div class="board-wrap" id="previewWrap" style="--n:9"><div class="brow" id="preview"></div></div>
+      <div class="row2">
+        <label for="tries">Guesses allowed
+          <input id="tries" type="number" min="1" max="20" inputmode="numeric" placeholder="auto">
+        </label>
+        <label for="by">Your name <small>optional</small>
+          <input id="by" maxlength="30" autocomplete="nickname" placeholder="Amit">
+        </label>
+      </div>
+      <label for="hint">Hint for your friends <small>optional, shown while they play</small>
+        <input id="hint" maxlength="120" placeholder="What Dana yelled at the beach">
+      </label>
+      <p class="err" id="makeErr" role="alert"></p>
+      <div class="actions"><button class="btn" type="submit">Make the link</button></div>
+    </form>
+
+    <div class="card" id="madeCard" hidden>
+      <b style="font-family:var(--display);font-size:22px">Your puzzle is ready</b>
+      <p class="note" id="madeSummary"></p>
+      <label for="shareLink">Link to send
+        <input id="shareLink" class="linkbox" readonly>
+      </label>
+      <div class="actions">
+        <button class="btn" id="copyLink" type="button">Copy link</button>
+        <button class="btn ghost" id="copyMsg" type="button">Copy as message</button>
+        <button class="btn ghost" id="tryIt" type="button">Test it</button>
+      </div>
+      <p class="note">The word is scrambled inside the link, so it won't show up in the chat preview.</p>
+    </div>
+
+    <form class="card" id="openForm" novalidate>
+      <label for="code">Got a link from a friend?
+        <input id="code" autocomplete="off" spellcheck="false" placeholder="Paste the link or code">
+      </label>
+      <p class="err" id="openErr" role="alert"></p>
+      <div class="actions"><button class="btn ghost" type="submit">Play it</button></div>
+    </form>
+  </section>
+
+  <!-- PLAY -->
+  <section id="play" class="wrap" style="gap:16px" hidden>
+    <div class="meta">
+      <b id="playTitle">A puzzle</b>
+      <span class="chip" id="playStats"></span>
+    </div>
+    <p class="hint" id="playHint" hidden></p>
+    <div class="board-wrap" id="boardWrap"><div class="board" id="board"></div></div>
+    <div class="legend" aria-hidden="true">
+      <span><i style="background:var(--hit)"></i>right spot</span>
+      <span><i style="background:var(--near)"></i>in the word, wrong spot</span>
+      <span><i style="background:var(--miss)"></i>not in it</span>
+    </div>
+    <div class="kbd" id="kbd"></div>
+    <div class="card result" id="result" hidden>
+      <h2 id="resTitle"></h2>
+      <p class="note" id="resText"></p>
+      <pre class="share" id="resShare"></pre>
+      <div class="actions">
+        <button class="btn" id="copyRes" type="button">Copy result</button>
+        <button class="btn ghost" id="makeOwn" type="button">Make one back</button>
+      </div>
+    </div>
+  </section>
+</div>
+<div class="toast" id="toast" hidden></div>
+
+<script>
+// Public address of the site; used for share links when the page is opened from a local file.
+const PUBLISHED_URL = "https://amitshok.github.io/wordleing/";
+const MAX_LEN = 30;
+const KEY = [73, 110, 107, 108, 105, 110, 103, 33, 42, 7, 19];
+const $ = id => document.getElementById(id);
+const LETTER = /^\p{L}$/u;
+
+// ---------- encoding ----------
+function b64url(bytes) { let s = ""; bytes.forEach(b => s += String.fromCharCode(b)); return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, ""); }
+function unb64url(str) { str = str.replace(/-/g, "+").replace(/_/g, "/"); while (str.length % 4) str += "="; const s = atob(str); return Uint8Array.from(s, c => c.charCodeAt(0)); }
+function encode(p) {
+  const bytes = new TextEncoder().encode(JSON.stringify(p));
+  return "k" + b64url(bytes.map((b, i) => b ^ KEY[i % KEY.length] ^ (i * 31 & 255)));
+}
+function decode(token) {
+  token = token.trim();
+  const m = token.match(/#?(k[A-Za-z0-9_-]{6,})\s*$/);
+  if (!m) return null;
+  try {
+    const bytes = unb64url(m[1].slice(1)).map((b, i) => b ^ KEY[i % KEY.length] ^ (i * 31 & 255));
+    const p = JSON.parse(new TextDecoder().decode(bytes));
+    if (!p || typeof p.w !== "string") return null;
+    const w = letters(p.w);
+    if (!w.length || w.length > MAX_LEN) return null;
+    return { w, g: clampTries(p.g, w.length), h: String(p.h || "").slice(0, 120), n: String(p.n || "").slice(0, 30), id: m[1] };
+  } catch { return null; }
+}
+function letters(s) { return Array.from(String(s).normalize("NFC").toLocaleUpperCase()).filter(c => LETTER.test(c)).slice(0, MAX_LEN); }
+function defaultTries(len) { return Math.min(10, Math.max(5, len + 1)); }
+function clampTries(g, len) { g = parseInt(g, 10); return g >= 1 && g <= 20 ? g : defaultTries(len); }
+function baseUrl() {
+  const here = location.href.split("#")[0];
+  const sandboxed = location.protocol === "file:" || location.protocol === "about:" || /claude|anthropic/i.test(location.hostname);
+  return sandboxed && PUBLISHED_URL ? PUBLISHED_URL : here;
+}
+
+// ---------- storage (best effort) ----------
+function load(k) { try { return JSON.parse(localStorage.getItem(k)); } catch { return null; } }
+function save(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} }
+
+// ---------- toast / copy ----------
+let toastT;
+function toast(msg) { const t = $("toast"); t.textContent = msg; t.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => t.hidden = true, 1800); }
+function copy(text, el) {
+  const done = () => toast("Copied");
+  const fallback = () => { if (el && el.select) { el.focus(); el.select(); } toast("Press Ctrl+C / ⌘C to copy"); };
+  try { navigator.clipboard.writeText(text).then(done, fallback); } catch { fallback(); }
+}
+
+// ---------- maker ----------
+function renderPreview() {
+  const w = letters($("word").value);
+  const n = Math.max(w.length, 5);
+  $("previewWrap").style.setProperty("--n", n);
+  $("preview").innerHTML = Array.from({ length: n }, (_, i) => `<div class="tile ${w[i] ? "typed" : ""}">${w[i] || ""}</div>`).join("");
+  $("wordCount").textContent = w.length ? `${w.length} letter${w.length > 1 ? "s" : ""} · ${defaultTries(w.length)} guesses by default` : "letters only, up to 30";
+  $("tries").placeholder = w.length ? String(defaultTries(w.length)) : "auto";
+}
+$("word").addEventListener("input", () => { $("makeErr").textContent = ""; renderPreview(); });
+
+let lastMade = null;
+$("makeForm").addEventListener("submit", e => {
+  e.preventDefault();
+  const raw = $("word").value, w = letters(raw);
+  if (w.length < 2) { $("makeErr").textContent = "Type a word with at least 2 letters."; $("word").focus(); return; }
+  if (Array.from(raw).filter(c => LETTER.test(c)).length > MAX_LEN) { $("makeErr").textContent = `That's longer than ${MAX_LEN} letters, so it was cut to ${MAX_LEN}.`; }
+  const g = clampTries($("tries").value, w.length);
+  const p = { w: w.join(""), g, h: $("hint").value.trim(), n: $("by").value.trim() };
+  save("inkling-maker", { n: p.n });
+  const token = encode(p);
+  const link = baseUrl() + "#" + token;
+  lastMade = { link, token, p };
+  $("shareLink").value = link;
+  $("madeSummary").textContent = `${w.length} letters, ${g} guesses${p.h ? ", with a hint" : ""}. Send this link to your friends.`;
+  $("madeCard").hidden = false;
+  $("madeCard").scrollIntoView({ behavior: "smooth", block: "nearest" });
+});
+$("copyLink").onclick = () => copy(lastMade.link, $("shareLink"));
+$("copyMsg").onclick = () => {
+  const p = lastMade.p;
+  copy(`${p.n ? p.n + " made you" : "Here's"} an Inkling: ${p.w.length} letters, ${p.g} guesses. Can you crack it?\n${lastMade.link}`, $("shareLink"));
+};
+$("tryIt").onclick = () => startGame(decode(lastMade.token), true);
+$("openForm").addEventListener("submit", e => {
+  e.preventDefault();
+  const p = decode($("code").value);
+  if (!p) { $("openErr").textContent = "That link doesn't contain a puzzle. Paste the whole link your friend sent."; return; }
+  $("openErr").textContent = "";
+  startGame(p);
+});
+
+// ---------- game ----------
+let G = null;
+const ROWS = ["QWERTYUIOP", "ASDFGHJKL", "ZXCVBNM"];
+
+function score(guess, ans) {
+  const res = guess.map(() => "miss"), left = {};
+  ans.forEach((c, i) => { if (guess[i] === c) res[i] = "hit"; else left[c] = (left[c] || 0) + 1; });
+  guess.forEach((c, i) => { if (res[i] !== "hit" && left[c] > 0) { res[i] = "near"; left[c]--; } });
+  return res;
+}
+
+function startGame(p, testing = false) {
+  if (!p) return;
+  const saved = testing ? null : load("inkling-" + p.id);
+  G = { p, guesses: saved?.guesses || [], cur: [], done: false, testing, storeKey: "inkling-" + p.id };
+  G.done = G.guesses.some(g => g.join("") === p.w.join("")) || G.guesses.length >= p.g;
+  $("make").hidden = true; $("play").hidden = false; $("newBtn").hidden = false;
+  const n = p.w.length;
+  $("boardWrap").style.setProperty("--n", n);
+  $("playTitle").textContent = testing ? "Testing your puzzle" : p.n ? `A puzzle from ${p.n}` : "A puzzle for you";
+  $("playStats").textContent = `${n} letters · ${p.g} guesses`;
+  $("playHint").hidden = !p.h; $("playHint").textContent = p.h ? "Hint: " + p.h : "";
+  $("board").innerHTML = Array.from({ length: p.g }, () =>
+    `<div class="brow">${'<div class="tile"></div>'.repeat(n)}</div>`).join("");
+  buildKeyboard();
+  G.guesses.forEach((g, r) => paintRow(r, g, score(g, p.w), false));
+  paintKeys();
+  if (G.done) finish(false); else $("result").hidden = true;
+  window.scrollTo({ top: 0 });
+}
+
+function buildKeyboard() {
+  const extra = [...new Set(G.p.w)].filter(c => !ROWS.join("").includes(c));
+  const rows = ROWS.map(r => r.split(""));
+  if (extra.length) rows.unshift(extra.sort());
+  $("kbd").innerHTML = rows.map((r, i) => {
+    let keys = r.map(c => `<button class="key" type="button" data-k="${c}">${c}</button>`).join("");
+    if (i === rows.length - 1) keys = `<button class="key wide" type="button" data-k="Enter">Enter</button>${keys}<button class="key wide" type="button" data-k="Backspace" aria-label="Delete letter">⌫</button>`;
+    return `<div class="krow">${keys}</div>`;
+  }).join("");
+  $("kbd").hidden = false;
+}
+
+function rowEl(r) { return $("board").children[r]; }
+function paintCurrent() {
+  const row = rowEl(G.guesses.length); if (!row) return;
+  [...row.children].forEach((t, i) => { const c = G.cur[i] || ""; if (t.textContent !== c) { t.textContent = c; t.className = "tile" + (c ? " typed" : ""); } });
+}
+function paintRow(r, guess, res, animate) {
+  [...rowEl(r).children].forEach((t, i) => {
+    t.textContent = guess[i];
+    const apply = () => { t.className = "tile " + res[i]; };
+    if (animate && !matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      const d = Math.min(i * 90, 1500);
+      t.style.animationDelay = d + "ms"; t.classList.add("flip");
+      setTimeout(apply, d + 220);
+      setTimeout(() => { t.classList.remove("flip"); t.style.animationDelay = ""; }, d + 460);
+    } else apply();
+  });
+}
+function paintKeys() {
+  const best = {}, rank = { miss: 1, near: 2, hit: 3 };
+  G.guesses.forEach(g => score(g, G.p.w).forEach((s, i) => { if ((rank[s] || 0) > (rank[best[g[i]]] || 0)) best[g[i]] = s; }));
+  $("kbd").querySelectorAll(".key[data-k]").forEach(k => { const s = best[k.dataset.k]; k.className = "key" + (k.dataset.k.length > 1 ? " wide" : "") + (s ? " " + s : ""); });
+}
+
+function press(k) {
+  if (!G || G.done) return;
+  const n = G.p.w.length;
+  if (k === "Backspace") { G.cur.pop(); paintCurrent(); return; }
+  if (k === "Enter") return submit();
+  if (LETTER.test(k) && G.cur.length < n) { G.cur.push(k.toLocaleUpperCase()); paintCurrent(); }
+}
+function submit() {
+  const n = G.p.w.length, r = G.guesses.length;
+  if (G.cur.length < n) {
+    const row = rowEl(r); row.classList.remove("shake"); void row.offsetWidth; row.classList.add("shake");
+    toast(`Needs ${n} letters`); return;
+  }
+  const guess = G.cur.slice(), res = score(guess, G.p.w);
+  G.guesses.push(guess); G.cur = [];
+  if (!G.testing) save(G.storeKey, { guesses: G.guesses });
+  paintRow(r, guess, res, true);
+  const won = res.every(s => s === "hit");
+  const delay = Math.min(n * 90, 1500) + 500;
+  setTimeout(paintKeys, delay);
+  if (won || G.guesses.length >= G.p.g) { G.done = true; setTimeout(() => finish(true), delay); }
+}
+
+function shareText() {
+  const won = G.guesses.some(g => g.join("") === G.p.w.join(""));
+  const emoji = { hit: "🟧", near: "🟦", miss: "⬛" };
+  const grid = G.guesses.map(g => score(g, G.p.w).map(s => emoji[s]).join("")).join("\n");
+  const head = `Inkling${G.p.n ? " from " + G.p.n : ""} · ${won ? G.guesses.length : "X"}/${G.p.g}`;
+  return `${head}\n${grid}`;
+}
+function finish(fresh) {
+  const won = G.guesses.some(g => g.join("") === G.p.w.join(""));
+  const words = ["Unreal.", "Brilliant.", "Sharp.", "Nice one.", "Got it.", "Phew.", "Just made it."];
+  const pct = G.guesses.length / G.p.g;
+  $("resTitle").textContent = won ? (G.guesses.length === 1 ? "First try?!" : words[Math.min(words.length - 1, Math.floor(pct * words.length))]) : "Out of guesses";
+  $("resText").innerHTML = (won ? `Solved in ${G.guesses.length} of ${G.p.g}. ` : "") + `The word was <span class="answer"></span>.`;
+  $("resText").querySelector(".answer").textContent = G.p.w.join("");
+  $("resShare").textContent = shareText();
+  $("result").hidden = false; $("kbd").hidden = true;
+  if (fresh) $("result").scrollIntoView({ behavior: "smooth", block: "nearest" });
+}
+$("copyRes").onclick = () => copy(shareText() + "\n" + baseUrl() + "#" + G.p.id);
+$("makeOwn").onclick = $("newBtn").onclick = $("home").onclick = showMaker;
+
+function showMaker() {
+  G = null;
+  $("play").hidden = true; $("make").hidden = false; $("newBtn").hidden = true;
+  try { if (location.hash) history.replaceState(null, "", location.pathname + location.search); } catch {}
+  window.scrollTo({ top: 0 });
+}
+
+$("kbd").addEventListener("click", e => { const k = e.target.closest("[data-k]"); if (k) { press(k.dataset.k); k.blur(); } });
+document.addEventListener("keydown", e => {
+  if (!G || $("play").hidden || e.ctrlKey || e.metaKey || e.altKey) return;
+  if (e.target.closest?.("input, textarea")) return;
+  if (e.key === "Enter" || e.key === "Backspace") { e.preventDefault(); press(e.key); }
+  else if (Array.from(e.key).length === 1 && LETTER.test(e.key)) press(e.key);
+});
+
+function route() { const p = location.hash.length > 1 ? decode(location.hash) : null; if (p) startGame(p); }
+window.addEventListener("hashchange", route);
+const m = load("inkling-maker"); if (m?.n) $("by").value = m.n;
+$("word").value = "Schnorble";
+renderPreview();
+route();
+</script>
+</body>
+</html>
