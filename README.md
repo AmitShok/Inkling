@@ -2,7 +2,7 @@
 
 A word-guessing game where you pick the secret word. Any word works, including made-up ones, from 2 to 30 letters. Set how many guesses your friends get, add a hint if you like, and send them the link.
 
-Play it at **https://amitshok.github.io/wordleing/**
+Play it at **https://amitshok.github.io/Inkling/**
 
 ## How it works
 
